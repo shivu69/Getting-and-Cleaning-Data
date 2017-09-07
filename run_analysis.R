@@ -1,7 +1,3 @@
-## STEP 0: load required packages
-
-# load the reshape2 package (will be used in STEP 5)
-library(reshape2)
 
 
 ## STEP 1: Merges the training and the test sets to create one data set
@@ -33,7 +29,6 @@ test <- cbind(subject_test, y_test, X_test)
 combined <- rbind(train, test)
 
 
-## STEP 2: Extracts only the measurements on the mean and standard
 ## deviation for each measurement.
 
 # determine which columns contain "mean()" or "std()"
@@ -47,9 +42,7 @@ meanstdcols[1:2] <- TRUE
 combined <- combined[, meanstdcols]
 
 
-## STEP 3: Uses descriptive activity names to name the activities
 ## in the data set.
-## STEP 4: Appropriately labels the data set with descriptive
 ## activity names. 
 
 # convert the activity column from integer to factor
@@ -65,4 +58,5 @@ melted <- melt(combined, id=c("subjectID","activity"))
 tidy <- dcast(melted, subjectID+activity ~ variable, mean)
 
 # write the tidy data set to a file
-write.csv(tidy, "tidy.csv", row.names=FALSE)
+
+write.tx(tidy, "tidy.txt", row.names=FALSE)
