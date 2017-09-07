@@ -1,62 +1,73 @@
+# Assuming that data is downloaded and unzipped manually into working directory as a directory "UCI HAR Dataset"
 
+# Investigating the dataset
+dataset_path <- './UCI HAR Dataset/'
+list.files(dataset_path, recursive = TRUE)
+library(data.table)
 
-## STEP 1: Merges the training and the test sets to create one data set
+# Reading subject indices
+train_subj <- fread(file.path(dataset_path, 'train', 'subject_train.txt'))
+test_subj <- fread(file.path(dataset_path, 'test', 'subject_test.txt'))
 
-# read data into data frames
-subject_train <- read.table("subject_train.txt")
-subject_test <- read.table("subject_test.txt")
-X_train <- read.table("X_train.txt")
-X_test <- read.table("X_test.txt")
-y_train <- read.table("y_train.txt")
-y_test <- read.table("y_test.txt")
+# Reading activity indices
+train_activities <- fread(file.path(dataset_path, 'train', 'y_train.txt'))
+test_activities <- fread(file.path(dataset_path, 'test', 'y_test.txt'))
 
-# add column name for subject files
-names(subject_train) <- "subjectID"
-names(subject_test) <- "subjectID"
+# Reading actual values
+dt_train <- data.table(read.table(file.path(dataset_path, 'train', 'X_train.txt')))
+dt_test <- data.table(read.table(file.path(dataset_path, 'test', 'X_test.txt')))
 
-# add column names for measurement files
-featureNames <- read.table("features.txt")
-names(X_train) <- featureNames$V2
-names(X_test) <- featureNames$V2
+# Merging the test and train tables
+dt_subject <- rbind(train_subj, test_subj)
+setnames(dt_subject, 'V1', 'subject')
+dt_activity <- rbind(train_activities, test_activities)
+setnames(dt_activity, 'V1', 'activity_index')
+dt <- rbind(dt_train, dt_test)
 
-# add column name for label files
-names(y_train) <- "activity"
-names(y_test) <- "activity"
+# Merging columns
+dt_subject <- cbind(dt_subject, dt_activity)
+dt <- cbind(dt_subject, dt)
 
-# combine files into one dataset
-train <- cbind(subject_train, y_train, X_train)
-test <- cbind(subject_test, y_test, X_test)
-combined <- rbind(train, test)
+# Setting key
+setkey(dt, subject, activity_index)
 
+# Extracting mean and std deviation columns
+## Reading features.txt file
+features <- fread(file.path(dataset_path, 'features.txt'))
+setnames(features, names(features), c('feature_index', 'feature_name'))
 
-## deviation for each measurement.
+## Extracting needed column names and indices
+features <- features[grepl('mean\\(|std\\(', feature_name)]
 
-# determine which columns contain "mean()" or "std()"
-meanstdcols <- grepl("mean\\(\\)", names(combined)) |
-  grepl("std\\(\\)", names(combined))
+## Subsetting dt to include only columns with mean and std deviation
+features$feature_code <- features[, paste0('V', feature_index)]
+select <- c(key(dt), features$feature_code)
+dt <- dt[, select, with = FALSE]
 
-# ensure that we also keep the subjectID and activity columns
-meanstdcols[1:2] <- TRUE
+## Adding descriptive names to activity types
+activity_names <- fread(file.path(dataset_path,'activity_labels.txt'))
+setnames(activity_names, names(activity_names), c('activity_index','activity_name'))
+dt <- merge(dt,activity_names, by = 'activity_index', all.x = TRUE)
+setkey(dt, subject, activity_index, activity_name)
 
-# remove unnecessary columns
-combined <- combined[, meanstdcols]
+## Melting data table
+dt <- data.table(melt(dt, key(dt), variable.name = "feature_code"))
 
+# Merging activity name
+dt <- merge(dt, features[, list(feature_name, feature_index, feature_code)], by = 'feature_code', all.x = TRUE)
 
-## in the data set.
-## activity names. 
+# Creating activity and feature rows as factors
+dt$activity <- factor(dt$activity_name)
+dt$feature <- factor(dt$feature_name)
 
-# convert the activity column from integer to factor
-combined$activity <- factor(combined$activity, labels=c("Walking",
-                                                        "Walking Upstairs", "Walking Downstairs", "Sitting", "Standing", "Laying"))
+## removing columns that are no longer needed
+names(dt)
+new_names <- c("subject", "activity", "feature", "value" )
+dt <- dt[, new_names, with = FALSE]
 
+# Creating a tidy dataset
+setkey(dt, subject, activity, feature)
+tidy_dataset <- dt[, list(count = .N, average = mean(value)), by=key(dt)]
 
-## STEP 5: Creates a second, independent tidy data set with the
-## average of each variable for each activity and each subject.
-
-# create the tidy data set
-melted <- melt(combined, id=c("subjectID","activity"))
-tidy <- dcast(melted, subjectID+activity ~ variable, mean)
-
-# write the tidy data set to a file
-
-write.tx(tidy, "tidy.txt", row.names=FALSE)
+# Saving the tidy dataset as txt
+write.table(tidy_dataset, file = "tidy.txt", row.names = FALSE)
